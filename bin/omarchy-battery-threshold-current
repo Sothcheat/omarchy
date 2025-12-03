@@ -5,26 +5,10 @@
 
 STATE_FILE="$HOME/.local/state/omarchy/battery-threshold"
 
-# Check directory and file permissions
-if [ ! -d "$HOME/.local/state/omarchy" ]; then
-    echo "Error: Battery state directory does not exist."
-    exit 1
-fi
-
-if [ ! -w "$HOME/.local/state/omarchy" ]; then
-    echo "Error: Battery state directory is not writable."
-    exit 1
-fi
-
-# Enhanced error handling with logging
-exec > /dev/null 2> >(while read -r line; do echo "$(date '+%Y-%m-%d %H:%M:%S') ERROR: $line" >> /var/log/omarchy-battery.log; done)
-
+# If state file exists, return its value
 if [[ -f "$STATE_FILE" ]]; then
-    cat "$STATE_FILE"
-elif [ -e "$STATE_FILE" ]; then
-    echo "Error: Battery state file exists but is not a regular file."
-    exit 1
+  cat "$STATE_FILE"
 else
-    echo "80"
-    echo "Default battery threshold set to 80%." >> /var/log/omarchy-battery.log
+  # Default to 80% for battery health
+  echo "80"
 fi
