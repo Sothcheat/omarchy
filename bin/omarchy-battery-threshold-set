@@ -1,0 +1,54 @@
+#!/bin/bash
+
+THRESHOLD="${1:-80}"
+STATE_FILE="$HOME/.local/state/omarchy/battery-threshold"
+mkdir -p "$(dirname "$STATE_FILE")"
+
+# Help
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Usage: $(basename "$0") [80|100]"
+    exit 0
+fi
+
+# Validate
+if [[ "$THRESHOLD" != "80" && "$THRESHOLD" != "100" ]]; then
+    echo "Error: Invalid threshold. Use 80 or 100."
+    exit 1
+fi
+
+# Find correct sysfs file
+THRESHOLD_FILE=$(find /sys/class/power_supply -type f -name charge_control_end_threshold 2>/dev/null | head -n1)
+if [[ -z "$THRESHOLD_FILE" ]]; then
+    echo "Error: Battery charge threshold control not supported on this system."
+    exit 1
+fi
+
+# Check if we have the necessary permissions
+if [ ! -w "$THRESHOLD_FILE" ]; then
+    echo "Error: Permission denied to write to '$THRESHOLD_FILE'."
+    exit 1
+fi
+
+# Write threshold
+if ! echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null; then
+    echo "Error: Failed to set battery charge threshold (permission denied or invalid value?)."
+    exit 1
+fi
+
+# Verify it was accepted
+ACTUAL=$(cat "$THRESHOLD_FILE" 2>/dev/null || echo "?")
+if [[ "$ACTUAL" != "$THRESHOLD" ]]; then
+    echo "Warning: Driver set $ACTUAL% instead of requested $THRESHOLD%"
+fi
+
+# Save state + notification
+echo "$THRESHOLD" > "$STATE_FILE"
+if command -v notify-send >/dev/null 2>&1; then
+    if [[ "$THRESHOLD" == "80" ]]; then
+        notify-send "Battery Charge Limit" "Charging limited to 80% for battery health" -u normal
+    else
+        notify-send "Battery Charge Limit" "Charging to full 100%" -u normal
+    fi
+fi
+
+echo "Battery charge threshold set to ${THRESHOLD}% ($THRESHOLD_FILE)"

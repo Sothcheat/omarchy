@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Script to restore battery charge threshold on boot
+# Called by systemd service
+
+STATE_FILE="$HOME/.local/state/omarchy/battery-threshold"
+THRESHOLD_FILE="/sys/class/power_supply/BAT0/charge_control_end_threshold"
+
+# Check if we have a saved preference
+if [[ -f "$STATE_FILE" ]]; then
+  THRESHOLD=$(cat "$STATE_FILE")
+else
+  echo "Error: State file does not exist. Default threshold will be used."
+  THRESHOLD="80"
+fi
+
+# Find the correct threshold file
+if [[ ! -f "$THRESHOLD_FILE" ]]; then
+  if [[ -f "/sys/class/power_supply/BAT1/charge_control_end_threshold" ]]; then
+    THRESHOLD_FILE="/sys/class/power_supply/BAT1/charge_control_end_threshold"
+  elif [[ -f "/sys/class/power_supply/battery/charge_control_end_threshold" ]]; then
+    THRESHOLD_FILE="/sys/class/power_supply/battery/charge_control_end_threshold"
+  else
+    echo "Error: Battery threshold control not supported on this system."
+    exit 0
+  fi
+fi
+
+# Check if we have the necessary permissions
+if [ ! -w "$THRESHOLD_FILE" ]; then
+  echo "Error: Permission denied to write to '$THRESHOLD_FILE'."
+  exit 1
+fi
+
+# Apply the threshold
+echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null
+
+exit 0

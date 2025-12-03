@@ -167,7 +167,11 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile\n󰍹  Monitors"
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile"
+  if ls /sys/class/power_supply/BAT* &>/dev/null; then
+      options="$options\n󱈑  Battery"
+  fi
+  options="$options\n󰍹  Monitors"
   [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
   [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
   options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
@@ -177,6 +181,7 @@ show_setup_menu() {
   *Wifi*) omarchy-launch-wifi ;;
   *Bluetooth*) omarchy-launch-bluetooth ;;
   *Power*) show_setup_power_menu ;;
+  *Battery*) show_battery_menu ;;
   *Monitors*) open_in_editor ~/.config/hypr/monitors.conf ;;
   *Keybindings*) open_in_editor ~/.config/hypr/bindings.conf ;;
   *Input*) open_in_editor ~/.config/hypr/input.conf ;;
@@ -196,6 +201,39 @@ show_setup_power_menu() {
   else
     powerprofilesctl set "$profile"
   fi
+}
+
+show_battery_menu() {
+  # Check if battery threshold control is supported
+  THRESHOLD_SUPPORTED=false
+  for path in /sys/class/power_supply/BAT*/charge_control_end_threshold /sys/class/power_supply/battery/charge_control_end_threshold; do
+    if [[ -f "$path" ]]; then
+      THRESHOLD_SUPPORTED=true
+      break
+    fi
+  done
+
+  if [[ "$THRESHOLD_SUPPORTED" == "false" ]]; then
+    notify-send "Battery Settings" "Charge threshold control not supported on this system" -u normal
+    back_to show_setup_menu
+    return
+  fi
+
+  current_threshold=$(omarchy-battery-threshold-current)
+
+  case $(menu "Battery Settings" "  Charge to 80% (Preserve Battery)\n  Charge to 100% (Maximum Range)" "" "Charge to ${current_threshold}%") in
+    *"80%"*)
+      omarchy-battery-threshold-set 80
+      show_battery_menu
+      ;;
+    *"100%"*)
+      omarchy-battery-threshold-set 100
+      show_battery_menu
+      ;;
+    *)
+      back_to show_setup_menu
+      ;;
+  esac
 }
 
 show_setup_config_menu() {
@@ -460,6 +498,7 @@ go_to_menu() {
   *screenrecord*) show_screenrecord_menu ;;
   *setup*) show_setup_menu ;;
   *power*) show_setup_power_menu ;;
+  *battery*) show_battery_menu ;;
   *install*) show_install_menu ;;
   *remove*) show_remove_menu ;;
   *update*) show_update_menu ;;
