@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Restore TLP profile on boot
+# Called by systemd service
+
+STATE_FILE="$HOME/.local/state/omarchy/tlp-profile"
+
+# Check if we have a saved preference
+if [[ -f "$STATE_FILE" ]]; then
+  PROFILE=$(cat "$STATE_FILE")
+else
+  # Default to balanced
+  PROFILE="balanced"
+fi
+
+# Check if TLP is installed
+if ! command -v tlp &>/dev/null; then
+  exit 0
+fi
+
+# Apply the saved profile
+TLP_CONF_DIR="/etc/tlp.d"
+
+# Disable all profile configs
+sudo mv "$TLP_CONF_DIR/01-profile-power-saver.conf" "$TLP_CONF_DIR/01-profile-power-saver.conf.disabled" 2>/dev/null || true
+sudo mv "$TLP_CONF_DIR/01-profile-balanced.conf" "$TLP_CONF_DIR/01-profile-balanced.conf.disabled" 2>/dev/null || true
+sudo mv "$TLP_CONF_DIR/01-profile-performance.conf" "$TLP_CONF_DIR/01-profile-performance.conf.disabled" 2>/dev/null || true
+
+# Enable the selected profile
+sudo mv "$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled" "$TLP_CONF_DIR/01-profile-${PROFILE}.conf" 2>/dev/null || true
+
+# TLP will automatically apply the configuration on boot
+exit 0

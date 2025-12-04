@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# Unified power profile lister
+# Unified power profile setter
 # Auto-detects PPD or TLP and calls appropriate backend
+
+PROFILE="$1"
 
 if command -v tlp &>/dev/null && [[ -f /etc/tlp.d/00-omarchy-base.conf ]]; then
   # TLP is installed
-  omarchy-tlp-profile-list
+  omarchy-tlp-profile-set "$PROFILE"
 elif command -v powerprofilesctl &>/dev/null; then
   # PPD is installed
-  powerprofilesctl list |
-    awk '/^\s*[* ]\s*[a-zA-Z0-9\-]+:$/ { gsub(/^[*[:space:]]+|:$/,""); print }' |
-    tac
+  powerprofilesctl set "$PROFILE"
 else
-  echo "Error: No power management system found" >&2
+  echo "Error: No power management system found"
   exit 1
 fi

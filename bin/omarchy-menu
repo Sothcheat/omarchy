@@ -194,12 +194,27 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$(powerprofilesctl get)")
+  # Detect which power management system is installed
+  if command -v tlp &>/dev/null && [[ -f /etc/tlp.d/00-omarchy-base.conf ]]; then
+    # TLP is installed - get current profile
+    current_profile=$(omarchy-tlp-profile-current)
+  elif command -v powerprofilesctl &>/dev/null; then
+    # PPD is installed - get current profile
+    current_profile=$(powerprofilesctl get)
+  else
+    notify-send "Power Profile" "No power management system found" -u critical
+    back_to show_setup_menu
+    return
+  fi
+
+  # Show menu with current selection
+  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$current_profile")
 
   if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
     back_to show_setup_menu
   else
-    powerprofilesctl set "$profile"
+    # Set profile using unified command
+    omarchy-powerprofile-set "$profile"
   fi
 }
 

@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Set TLP power profile
+# Usage: omarchy-tlp-profile-set [power-saver|balanced|performance]
+
+PROFILE="${1:-balanced}"
+STATE_FILE="$HOME/.local/state/omarchy/tlp-profile"
+TLP_CONF_DIR="/etc/tlp.d"
+
+# Help
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  echo "Usage: $(basename "$0") [power-saver|balanced|performance]"
+  echo ""
+  echo "Profiles:"
+  echo "  power-saver   - Maximum battery life (forces BAT mode)"
+  echo "  balanced      - Balance performance and battery (default)"
+  echo "  performance   - Maximum performance (forces AC mode)"
+  exit 0
+fi
+
+# Validate profile
+case "$PROFILE" in
+  power-saver|balanced|performance)
+    # Valid profile
+    ;;
+  *)
+    echo "Error: Invalid profile '$PROFILE'"
+    echo "Valid profiles: power-saver, balanced, performance"
+    exit 1
+    ;;
+esac
+
+# Check if TLP is installed
+if ! command -v tlp &>/dev/null; then
+  echo "Error: TLP is not installed"
+  exit 1
+fi
+
+# Disable all profile configs first
+sudo mv "$TLP_CONF_DIR/01-profile-power-saver.conf" "$TLP_CONF_DIR/01-profile-power-saver.conf.disabled" 2>/dev/null || true
+sudo mv "$TLP_CONF_DIR/01-profile-balanced.conf" "$TLP_CONF_DIR/01-profile-balanced.conf.disabled" 2>/dev/null || true
+sudo mv "$TLP_CONF_DIR/01-profile-performance.conf" "$TLP_CONF_DIR/01-profile-performance.conf.disabled" 2>/dev/null || true
+
+# Enable the selected profile
+sudo mv "$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled" "$TLP_CONF_DIR/01-profile-${PROFILE}.conf" 2>/dev/null || true
+
+# Apply the new configuration
+if ! sudo tlp start &>/dev/null; then
+  echo "Warning: Failed to apply TLP configuration"
+fi
+
+# Save the profile preference
+mkdir -p "$(dirname "$STATE_FILE")"
+echo "$PROFILE" > "$STATE_FILE"
+
+# Show notification
+if command -v notify-send &>/dev/null; then
+  case "$PROFILE" in
+    power-saver)
+      notify-send "⚡ Power Profile" "Power Saver - Maximum battery life" -u normal
+      ;;
+    balanced)
+      notify-send "⚡ Power Profile" "Balanced - Performance and battery" -u normal
+      ;;
+    performance)
+      notify-send "⚡ Power Profile" "Performance - Maximum speed" -u normal
+      ;;
+  esac
+fi
+
+echo "TLP profile set to: $PROFILE"

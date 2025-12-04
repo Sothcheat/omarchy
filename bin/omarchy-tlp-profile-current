@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Get current TLP power profile
+# Returns: power-saver, balanced, or performance
+
+STATE_FILE="$HOME/.local/state/omarchy/tlp-profile"
+
+# If state file exists, return its value
+if [[ -f "$STATE_FILE" ]]; then
+  cat "$STATE_FILE"
+else
+  # Default to balanced
+  echo "balanced"
+fi
