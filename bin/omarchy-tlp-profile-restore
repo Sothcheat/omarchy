@@ -3,11 +3,31 @@
 # Restore TLP profile on boot
 # Called by systemd service (runs as root, so no sudo needed)
 
-STATE_FILE="/home/$USER/.local/state/omarchy/tlp-profile"
+# Get the actual user's home directory
+# This service runs as root, so $HOME would be /root
+USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
+
+if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+  echo "Error: Could not determine user home directory" >&2
+  exit 1
+fi
+
+STATE_FILE="$USER_HOME/.local/state/omarchy/tlp-profile"
 
 # Check if we have a saved preference
 if [[ -f "$STATE_FILE" ]]; then
-  PROFILE=$(cat "$STATE_FILE")
+  PROFILE=$(cat "$STATE_FILE" 2>/dev/null)
+
+  # Validate profile
+  case "$PROFILE" in
+    power-saver|balanced|performance)
+      # Valid profile, continue
+      ;;
+    *)
+      echo "Warning: Invalid profile in state file: $PROFILE" >&2
+      PROFILE="balanced"
+      ;;
+  esac
 else
   # Default to balanced
   PROFILE="balanced"
@@ -15,19 +35,41 @@ fi
 
 # Check if TLP is installed
 if ! command -v tlp &>/dev/null; then
+  echo "TLP not installed, exiting" >&2
   exit 0
 fi
 
 # Apply the saved profile
 TLP_CONF_DIR="/etc/tlp.d"
 
+if [[ ! -d "$TLP_CONF_DIR" ]]; then
+  echo "Error: TLP configuration directory not found" >&2
+  exit 1
+fi
+
 # Disable all profile configs
-mv "$TLP_CONF_DIR/01-profile-power-saver.conf" "$TLP_CONF_DIR/01-profile-power-saver.conf.disabled" 2>/dev/null || true
-mv "$TLP_CONF_DIR/01-profile-balanced.conf" "$TLP_CONF_DIR/01-profile-balanced.conf.disabled" 2>/dev/null || true
-mv "$TLP_CONF_DIR/01-profile-performance.conf" "$TLP_CONF_DIR/01-profile-performance.conf.disabled" 2>/dev/null || true
+for prof in power-saver balanced performance; do
+  active="$TLP_CONF_DIR/01-profile-${prof}.conf"
+  disabled="$TLP_CONF_DIR/01-profile-${prof}.conf.disabled"
+
+  if [[ -f "$active" ]]; then
+    mv "$active" "$disabled" 2>/dev/null || true
+  fi
+done
 
 # Enable the selected profile
-mv "$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled" "$TLP_CONF_DIR/01-profile-${PROFILE}.conf" 2>/dev/null || true
+active="$TLP_CONF_DIR/01-profile-${PROFILE}.conf"
+disabled="$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled"
+
+if [[ -f "$disabled" ]]; then
+  mv "$disabled" "$active" 2>/dev/null || {
+    echo "Error: Failed to enable profile: $PROFILE" >&2
+    exit 1
+  }
+else
+  echo "Warning: Profile configuration not found: $disabled" >&2
+fi
 
 # TLP will automatically apply the configuration on boot
+echo "Restored TLP profile: $PROFILE"
 exit 0

@@ -194,18 +194,48 @@ show_setup_menu() {
 }
 
 show_setup_power_menu() {
+  # Get script directory for reliable path resolution
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
   # Detect which power management system is installed
   if command -v tlp &>/dev/null && [[ -f /etc/tlp.d/00-omarchy-base.conf ]]; then
     # TLP is installed - get current profile
-    current_profile=$(omarchy-tlp-profile-current)
+    current_profile=$("$SCRIPT_DIR/omarchy-tlp-profile-current" 2>/dev/null)
+    if [[ -z "$current_profile" ]]; then
+      current_profile="balanced"
+    fi
   elif command -v powerprofilesctl &>/dev/null; then
     # PPD is installed - get current profile
-    current_profile=$(powerprofilesctl get)
+    current_profile=$(powerprofilesctl get 2>/dev/null)
+    if [[ -z "$current_profile" ]]; then
+      current_profile="balanced"
+    fi
   else
     notify-send "Power Profile" "No power management system found" -u critical
     back_to show_setup_menu
     return
   fi
+
+  # Get list of available profiles
+  profile_list=$("$SCRIPT_DIR/omarchy-powerprofiles-list" 2>/dev/null)
+  if [[ -z "$profile_list" ]]; then
+    notify-send "Power Profile" "Failed to get profile list" -u critical
+    back_to show_setup_menu
+    return
+  fi
+
+  # Show menu with current selection
+  profile=$(menu "Power Profile" "$profile_list" "" "$current_profile")
+
+  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
+    back_to show_setup_menu
+  else
+    # Set profile using unified command
+    if ! "$SCRIPT_DIR/omarchy-powerprofile-set" "$profile"; then
+      notify-send "Power Profile" "Failed to set profile: $profile" -u critical
+    fi
+  fi
+}
 
   # Show menu with current selection
   profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$current_profile")

@@ -5,13 +5,41 @@
 
 PROFILE="$1"
 
+# Validate input
+if [[ -z "$PROFILE" ]]; then
+  echo "Error: No profile specified" >&2
+  echo "Usage: $(basename "$0") <power-saver|balanced|performance>" >&2
+  exit 1
+fi
+
+# Validate profile name
+case "$PROFILE" in
+  power-saver|balanced|performance)
+    # Valid profile
+    ;;
+  *)
+    echo "Error: Invalid profile '$PROFILE'" >&2
+    echo "Valid profiles: power-saver, balanced, performance" >&2
+    exit 1
+    ;;
+esac
+
+# Get script directory for reliable path resolution
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if command -v tlp &>/dev/null && [[ -f /etc/tlp.d/00-omarchy-base.conf ]]; then
   # TLP is installed
-  omarchy-tlp-profile-set "$PROFILE"
+  if ! "$SCRIPT_DIR/omarchy-tlp-profile-set" "$PROFILE"; then
+    echo "Error: Failed to set TLP profile" >&2
+    exit 1
+  fi
 elif command -v powerprofilesctl &>/dev/null; then
   # PPD is installed
-  powerprofilesctl set "$PROFILE"
+  if ! powerprofilesctl set "$PROFILE"; then
+    echo "Error: Failed to set PPD profile" >&2
+    exit 1
+  fi
 else
-  echo "Error: No power management system found"
+  echo "Error: No power management system found" >&2
   exit 1
 fi

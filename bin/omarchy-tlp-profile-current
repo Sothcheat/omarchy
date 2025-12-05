@@ -5,10 +5,18 @@
 
 STATE_FILE="$HOME/.local/state/omarchy/tlp-profile"
 
-# If state file exists, return its value
+# If state file exists, validate and return its value
 if [[ -f "$STATE_FILE" ]]; then
-  cat "$STATE_FILE"
-else
-  # Default to balanced
-  echo "balanced"
+  PROFILE=$(cat "$STATE_FILE" 2>/dev/null)
+
+  # Validate profile name
+  case "$PROFILE" in
+    power-saver|balanced|performance)
+      echo "$PROFILE"
+      exit 0
+      ;;
+  esac
 fi
+
+# Default to balanced if no valid state found
+echo "balanced"

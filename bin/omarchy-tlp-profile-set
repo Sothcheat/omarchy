@@ -24,34 +24,68 @@ case "$PROFILE" in
     # Valid profile
     ;;
   *)
-    echo "Error: Invalid profile '$PROFILE'"
-    echo "Valid profiles: power-saver, balanced, performance"
+    echo "Error: Invalid profile '$PROFILE'" >&2
+    echo "Valid profiles: power-saver, balanced, performance" >&2
     exit 1
     ;;
 esac
 
 # Check if TLP is installed
 if ! command -v tlp &>/dev/null; then
-  echo "Error: TLP is not installed"
+  echo "Error: TLP is not installed" >&2
+  exit 1
+fi
+
+# Validate TLP config directory exists
+if [[ ! -d "$TLP_CONF_DIR" ]]; then
+  echo "Error: TLP configuration directory not found: $TLP_CONF_DIR" >&2
   exit 1
 fi
 
 # Disable all profile configs first
-sudo mv "$TLP_CONF_DIR/01-profile-power-saver.conf" "$TLP_CONF_DIR/01-profile-power-saver.conf.disabled" 2>/dev/null || true
-sudo mv "$TLP_CONF_DIR/01-profile-balanced.conf" "$TLP_CONF_DIR/01-profile-balanced.conf.disabled" 2>/dev/null || true
-sudo mv "$TLP_CONF_DIR/01-profile-performance.conf" "$TLP_CONF_DIR/01-profile-performance.conf.disabled" 2>/dev/null || true
+echo "Disabling all profiles..."
+for prof in power-saver balanced performance; do
+  active="$TLP_CONF_DIR/01-profile-${prof}.conf"
+  disabled="$TLP_CONF_DIR/01-profile-${prof}.conf.disabled"
+
+  if [[ -f "$active" ]]; then
+    if ! sudo mv "$active" "$disabled" 2>/dev/null; then
+      echo "Warning: Failed to disable profile: $prof" >&2
+    fi
+  fi
+done
 
 # Enable the selected profile
-sudo mv "$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled" "$TLP_CONF_DIR/01-profile-${PROFILE}.conf" 2>/dev/null || true
+active="$TLP_CONF_DIR/01-profile-${PROFILE}.conf"
+disabled="$TLP_CONF_DIR/01-profile-${PROFILE}.conf.disabled"
+
+if [[ ! -f "$disabled" ]]; then
+  echo "Error: Profile configuration not found: $disabled" >&2
+  echo "TLP may not be properly installed" >&2
+  exit 1
+fi
+
+echo "Enabling profile: $PROFILE"
+if ! sudo mv "$disabled" "$active" 2>/dev/null; then
+  echo "Error: Failed to enable profile: $PROFILE" >&2
+  exit 1
+fi
 
 # Apply the new configuration
+echo "Applying TLP configuration..."
 if ! sudo tlp start &>/dev/null; then
-  echo "Warning: Failed to apply TLP configuration"
+  echo "Warning: Failed to apply TLP configuration" >&2
+  echo "Changes will take effect on next boot" >&2
 fi
 
 # Save the profile preference
-mkdir -p "$(dirname "$STATE_FILE")"
-echo "$PROFILE" > "$STATE_FILE"
+if ! mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null; then
+  echo "Warning: Failed to create state directory" >&2
+fi
+
+if ! echo "$PROFILE" > "$STATE_FILE" 2>/dev/null; then
+  echo "Warning: Failed to save profile preference" >&2
+fi
 
 # Show notification
 if command -v notify-send &>/dev/null; then
