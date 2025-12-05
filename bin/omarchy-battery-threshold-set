@@ -2,53 +2,83 @@
 
 THRESHOLD="${1:-80}"
 STATE_FILE="$HOME/.local/state/omarchy/battery-threshold"
-mkdir -p "$(dirname "$STATE_FILE")"
 
 # Help
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "Usage: $(basename "$0") [80|100]"
+    echo ""
+    echo "Set battery charge threshold:"
+    echo "  80  - Stop charging at 80% (preserves battery health)"
+    echo "  100 - Charge to full 100% (maximum range)"
+    echo ""
+    echo "Note: This feature requires:"
+    echo "  - A laptop with battery"
+    echo "  - Hardware/firmware support for charge threshold control"
     exit 0
 fi
 
-# Validate
+# Validate threshold value
 if [[ "$THRESHOLD" != "80" && "$THRESHOLD" != "100" ]]; then
-    echo "Error: Invalid threshold. Use 80 or 100."
+    echo "Error: Invalid threshold '$THRESHOLD'. Use 80 or 100." >&2
+    exit 1
+fi
+
+# Check for battery first
+if ! ls /sys/class/power_supply/BAT* &>/dev/null 2>&1 && \
+   ! [[ -d /sys/class/power_supply/battery ]]; then
+    echo "Error: No battery detected on this system." >&2
+    echo "This feature is only available on laptops with batteries." >&2
     exit 1
 fi
 
 # Find correct sysfs file
 THRESHOLD_FILE=$(find /sys/class/power_supply -type f -name charge_control_end_threshold 2>/dev/null | head -n1)
+
 if [[ -z "$THRESHOLD_FILE" ]]; then
-    echo "Error: Battery charge threshold control not supported on this system."
+    echo "Error: Battery charge threshold control not supported on this system." >&2
+    echo "Your laptop manufacturer/model may not support this feature." >&2
+    echo "This is a hardware/firmware limitation, not a software issue." >&2
     exit 1
 fi
 
-# Check if we have the necessary permissions
-if [ ! -w "$THRESHOLD_FILE" ]; then
-    echo "Error: Permission denied to write to '$THRESHOLD_FILE'."
+# Validate the file exists (double-check after find)
+if [[ ! -f "$THRESHOLD_FILE" ]]; then
+    echo "Error: Threshold file not found: $THRESHOLD_FILE" >&2
     exit 1
 fi
 
-# Write threshold
-if ! echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null; then
-    echo "Error: Failed to set battery charge threshold (permission denied or invalid value?)."
+# Write threshold using sudo (sysfs files require root)
+if ! echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null 2>&1; then
+    echo "Error: Failed to set battery charge threshold." >&2
+    echo "This may require root privileges or your hardware may not support it." >&2
     exit 1
 fi
 
-# Verify it was accepted
-ACTUAL=$(cat "$THRESHOLD_FILE" 2>/dev/null || echo "?")
-if [[ "$ACTUAL" != "$THRESHOLD" ]]; then
-    echo "Warning: Driver set $ACTUAL% instead of requested $THRESHOLD%"
+# Verify it was accepted (some drivers may adjust the value)
+ACTUAL=$(cat "$THRESHOLD_FILE" 2>/dev/null)
+if [[ -z "$ACTUAL" ]]; then
+    echo "Warning: Could not verify threshold was set" >&2
+elif [[ "$ACTUAL" != "$THRESHOLD" ]]; then
+    echo "Warning: Driver set ${ACTUAL}% instead of requested ${THRESHOLD}%" >&2
+    THRESHOLD="$ACTUAL"  # Use the actual value for state file
 fi
 
-# Save state + notification
-echo "$THRESHOLD" > "$STATE_FILE"
-if command -v notify-send >/dev/null 2>&1; then
+# Save state
+if ! mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null; then
+    echo "Warning: Failed to create state directory" >&2
+fi
+
+if ! echo "$THRESHOLD" > "$STATE_FILE" 2>/dev/null; then
+    echo "Warning: Failed to save threshold state" >&2
+fi
+
+# Show notification
+if command -v notify-send &>/dev/null; then
     if [[ "$THRESHOLD" == "80" ]]; then
-        notify-send "Battery Charge Limit" "Charging limited to 80% for battery health" -u normal
+        notify-send "🔋 Battery Charge Limit" "Charging limited to 80% for battery health" -u normal
     else
-        notify-send "Battery Charge Limit" "Charging to full 100%" -u normal
+        notify-send "🔋 Battery Charge Limit" "Charging to full 100%" -u normal
     fi
 fi
 
-echo "Battery charge threshold set to ${THRESHOLD}% ($THRESHOLD_FILE)"
+echo "Battery charge threshold set to ${THRESHOLD}% (${THRESHOLD_FILE})"

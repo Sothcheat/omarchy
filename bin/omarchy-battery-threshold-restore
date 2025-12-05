@@ -2,37 +2,75 @@
 
 # Script to restore battery charge threshold on boot
 # Called by systemd service
+# Exits gracefully if battery/support is not available
 
-STATE_FILE="$HOME/.local/state/omarchy/battery-threshold"
-THRESHOLD_FILE="/sys/class/power_supply/BAT0/charge_control_end_threshold"
+# Get user's home directory (works even when run as root or user)
+USER_HOME="${HOME:-$(eval echo ~$USER)}"
+
+if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+  echo "Error: Could not determine user home directory" >&2
+  exit 1
+fi
+
+STATE_FILE="$USER_HOME/.local/state/omarchy/battery-threshold"
+
+# Check for battery first (exit gracefully if none)
+if ! ls /sys/class/power_supply/BAT* &>/dev/null 2>&1 && \
+   ! [[ -d /sys/class/power_supply/battery ]]; then
+  # No battery - this is expected on desktops, not an error
+  exit 0
+fi
 
 # Check if we have a saved preference
 if [[ -f "$STATE_FILE" ]]; then
-  THRESHOLD=$(cat "$STATE_FILE")
+  THRESHOLD=$(cat "$STATE_FILE" 2>/dev/null)
+
+  # Validate threshold
+  case "$THRESHOLD" in
+    80|100)
+      # Valid threshold, continue
+      ;;
+    *)
+      echo "Warning: Invalid threshold in state file: '$THRESHOLD', using default" >&2
+      THRESHOLD="80"
+      ;;
+  esac
 else
-  echo "Error: State file does not exist. Default threshold will be used."
   THRESHOLD="80"
 fi
 
 # Find the correct threshold file
-if [[ ! -f "$THRESHOLD_FILE" ]]; then
-  if [[ -f "/sys/class/power_supply/BAT1/charge_control_end_threshold" ]]; then
-    THRESHOLD_FILE="/sys/class/power_supply/BAT1/charge_control_end_threshold"
-  elif [[ -f "/sys/class/power_supply/battery/charge_control_end_threshold" ]]; then
-    THRESHOLD_FILE="/sys/class/power_supply/battery/charge_control_end_threshold"
-  else
-    echo "Error: Battery threshold control not supported on this system."
-    exit 0
+THRESHOLD_FILE=""
+for path in /sys/class/power_supply/BAT*/charge_control_end_threshold \
+            /sys/class/power_supply/battery/charge_control_end_threshold; do
+  if [[ -f "$path" ]]; then
+    THRESHOLD_FILE="$path"
+    break
   fi
+done
+
+if [[ -z "$THRESHOLD_FILE" ]]; then
+  # Threshold control not supported - exit gracefully
+  # This can happen on laptops without manufacturer support
+  exit 0
 fi
 
-# Check if we have the necessary permissions
-if [ ! -w "$THRESHOLD_FILE" ]; then
-  echo "Error: Permission denied to write to '$THRESHOLD_FILE'."
-  exit 1
+# Validate file exists
+if [[ ! -f "$THRESHOLD_FILE" ]]; then
+  exit 0
 fi
 
 # Apply the threshold
-echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null
+if echo "$THRESHOLD" | sudo tee "$THRESHOLD_FILE" > /dev/null 2>&1; then
+  # Verify it was set
+  ACTUAL=$(cat "$THRESHOLD_FILE" 2>/dev/null)
+  if [[ "$ACTUAL" == "$THRESHOLD" ]]; then
+    echo "Battery charge threshold restored to ${THRESHOLD}%"
+  else
+    echo "Warning: Threshold set to ${ACTUAL}% instead of ${THRESHOLD}%"
+  fi
+else
+  echo "Warning: Failed to restore battery charge threshold" >&2
+fi
 
 exit 0

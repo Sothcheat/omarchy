@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Check if system supports battery threshold control
+# Exit 0 if supported, exit 1 if not supported
+# Used by menu system to conditionally show battery options
+
+# Function to check for battery
+has_battery() {
+  if ls /sys/class/power_supply/BAT* &>/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -d /sys/class/power_supply/battery ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+# Function to check for threshold support
+has_battery_threshold_support() {
+  if ! has_battery; then
+    return 1
+  fi
+
+  for path in /sys/class/power_supply/BAT*/charge_control_end_threshold \
+              /sys/class/power_supply/battery/charge_control_end_threshold; do
+    if [[ -f "$path" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Main execution
+if has_battery_threshold_support; then
+  exit 0  # Supported
+else
+  exit 1  # Not supported
+fi

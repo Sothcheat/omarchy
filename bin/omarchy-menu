@@ -167,14 +167,20 @@ show_font_menu() {
 }
 
 show_setup_menu() {
-  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile"
-  if ls /sys/class/power_supply/BAT* &>/dev/null; then
-      options="$options\n󱈑  Battery"
+  # Get script directory for reliable path resolution
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  local options="  Audio\n  Wifi\n󰂯  Bluetooth\n󱐋  Power Profile"
+
+  # Only show Battery menu if system has a battery with threshold support
+  if "$SCRIPT_DIR/omarchy-has-battery-threshold" 2>/dev/null; then
+    options="$options\n󱈑  Battery"
   fi
+
   options="$options\n󰍹  Monitors"
-  [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
-  [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
-  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
+  [ -f ~/.config/hypr/bindings.conf ] && options="$options\n  Keybindings"
+  [ -f ~/.config/hypr/input.conf ] && options="$options\n  Input"
+  options="$options\n  Defaults\n󰱔  DNS\n  Security\n  Config"
 
   case $(menu "Setup" "$options") in
   *Audio*) omarchy-launch-or-focus-tui wiremix ;;
@@ -237,43 +243,37 @@ show_setup_power_menu() {
   fi
 }
 
-  # Show menu with current selection
-  profile=$(menu "Power Profile" "$(omarchy-powerprofiles-list)" "" "$current_profile")
-
-  if [[ "$profile" == "CNCLD" || -z "$profile" ]]; then
-    back_to show_setup_menu
-  else
-    # Set profile using unified command
-    omarchy-powerprofile-set "$profile"
-  fi
-}
-
 show_battery_menu() {
-  # Check if battery threshold control is supported
-  THRESHOLD_SUPPORTED=false
-  for path in /sys/class/power_supply/BAT*/charge_control_end_threshold /sys/class/power_supply/battery/charge_control_end_threshold; do
-    if [[ -f "$path" ]]; then
-      THRESHOLD_SUPPORTED=true
-      break
-    fi
-  done
+  # Get script directory for reliable path resolution
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-  if [[ "$THRESHOLD_SUPPORTED" == "false" ]]; then
-    notify-send "Battery Settings" "Charge threshold control not supported on this system" -u normal
+  # Double-check support (should never fail if menu showed the option)
+  if ! "$SCRIPT_DIR/omarchy-has-battery-threshold" 2>/dev/null; then
+    notify-send "Battery Settings" "Charge threshold control not available on this system" -u normal
     back_to show_setup_menu
     return
   fi
 
-  current_threshold=$(omarchy-battery-threshold-current)
+  # Get current threshold
+  current_threshold=$("$SCRIPT_DIR/omarchy-battery-threshold-current" 2>/dev/null)
+  if [[ -z "$current_threshold" ]]; then
+    current_threshold="80"
+  fi
 
   case $(menu "Battery Settings" "  Charge to 80% (Preserve Battery)\n  Charge to 100% (Maximum Range)" "" "Charge to ${current_threshold}%") in
     *"80%"*)
-      omarchy-battery-threshold-set 80
-      show_battery_menu
+      if "$SCRIPT_DIR/omarchy-battery-threshold-set" 80; then
+        show_battery_menu  # Reload menu to show updated value
+      else
+        notify-send "Battery Settings" "Failed to set threshold to 80%" -u critical
+      fi
       ;;
     *"100%"*)
-      omarchy-battery-threshold-set 100
-      show_battery_menu
+      if "$SCRIPT_DIR/omarchy-battery-threshold-set" 100; then
+        show_battery_menu  # Reload menu to show updated value
+      else
+        notify-send "Battery Settings" "Failed to set threshold to 100%" -u critical
+      fi
       ;;
     *)
       back_to show_setup_menu
