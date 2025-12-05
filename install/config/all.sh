@@ -31,5 +31,5 @@ run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-spi-keyboard.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-suspend-nvme.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-apple-t2.sh
 run_logged $OMARCHY_INSTALL/config/hardware/fix-surface-keyboard.sh
-run_logged $OMARCHY_INSTALL/config/hardware/battery-threshold.sh
 run_logged $OMARCHY_INSTALL/config/hardware/power-management.sh
+run_logged $OMARCHY_INSTALL/config/hardware/battery-threshold.sh

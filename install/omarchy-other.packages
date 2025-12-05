@@ -43,6 +43,10 @@ wget
 yay-debug
 zram-generator
 
+# Power Management (either TLP or PPD will be installed based on hardware)
+tlp
+power-profiles-daemon
+
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config
